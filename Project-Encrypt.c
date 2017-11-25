@@ -36,16 +36,22 @@ int main(argc, argv)
  
   int my_rank, pool_size, last_guy, i, count;
   BOOLEAN i_am_the_master = FALSE, input_error = FALSE;
+  // Read file variables
   unsigned char *filename = NULL, *read_buffer;
   int filename_length;
   int *junk;
   int file_open_error, number_of_bytes;
+  // Write file variables
+  unsigned char *wfilename = "c2.mp4";
  
   /* MPI_Offset is long long */
  
   MPI_Offset my_offset, my_current_offset, total_number_of_bytes,
     number_of_bytes_ll, max_number_of_bytes_ll;
+  // Read file
   MPI_File fh;
+  // Write file
+  MPI_File wfh;
   MPI_Status status;
   double start, finish, io_time, longest_io_time;
  
@@ -122,6 +128,9 @@ int main(argc, argv)
  
   file_open_error = MPI_File_open(MPI_COMM_WORLD, filename,
                           MPI_MODE_RDONLY, MPI_INFO_NULL, &fh);
+
+  file_open_error = MPI_File_open(MPI_COMM_WORLD, wfilename,
+                MPI_MODE_CREATE | MPI_MODE_RDWR, MPI_INFO_NULL, &wfh);
  
   if (file_open_error != MPI_SUCCESS) {
  
@@ -171,9 +180,14 @@ int main(argc, argv)
     MPI_File_seek(fh, my_offset, MPI_SEEK_SET);
  
     MPI_Barrier(MPI_COMM_WORLD);
+
+    // Write file operarion
+    MPI_File_seek(wfh, my_offset, MPI_SEEK_SET);
  
     start = MPI_Wtime();
     MPI_File_read(fh, read_buffer, number_of_bytes, MPI_BYTE, &status);
+    // Write file operation
+    MPI_File_write(wfh, read_buffer, number_of_bytes, MPI_BYTE, &status);
     #ifdef DEBUG
       int m;
       for (m = 0; m < number_of_bytes ; m++) {
@@ -209,6 +223,7 @@ int main(argc, argv)
   } /* of if(max_number_of_bytes_ll < INT_MAX) */
  
   MPI_File_close(&fh);
+  MPI_File_close(&wfh);
  
   MPI_Finalize();
   exit(0);
