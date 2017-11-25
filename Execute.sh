@@ -7,4 +7,4 @@
 #SBATCH -N 2
 #SBATCH -n 3
 
-prun Proyect-Decrypt.mpi
+prun ${1}.mpi -f ${2}

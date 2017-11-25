@@ -20,7 +20,7 @@
 #include <limits.h>  /* INT_MAX lives here */
 #include <mpi.h>     /* MPI and MPI-IO live here */
  
-#define DEBUG 0
+#define DEBUG 1
 #define MASTER_RANK 0
 #define TRUE 1
 #define FALSE 0
@@ -36,7 +36,7 @@ int main(argc, argv)
  
   int my_rank, pool_size, last_guy, i, count;
   BOOLEAN i_am_the_master = FALSE, input_error = FALSE;
-  char *filename = NULL, *read_buffer;
+  unsigned char *filename = NULL, *read_buffer;
   int filename_length;
   int *junk;
   int file_open_error, number_of_bytes;
