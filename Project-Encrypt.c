@@ -26,7 +26,18 @@
 #define FALSE 0
 #define BOOLEAN int
 #define MBYTE 1048576
+#define COLUMN_SIZE 64
 #define SYNOPSIS printf ("synopsis: %s -f <file>\n", argv[0])
+
+// Functions prototype
+void transpose(unsigned char *read_buffer, unsigned char **write_buffer, int number_of_bytes);
+
+void transpose(unsigned char *read_buffer, unsigned char **write_buffer, int number_of_bytes) {
+  int i;
+  for (i=0 ; i<number_of_bytes ; i++) {
+    (*write_buffer)[(i*COLUMN_SIZE)%number_of_bytes] = read_buffer[i];
+  }
+}
  
 int main(argc, argv)
      int argc;
@@ -36,22 +47,16 @@ int main(argc, argv)
  
   int my_rank, pool_size, last_guy, i, count;
   BOOLEAN i_am_the_master = FALSE, input_error = FALSE;
-  // Read file variables
-  unsigned char *filename = NULL, *read_buffer;
+  unsigned char *read_filename = NULL, *read_buffer; // Read file variables
+  unsigned char *write_filename = "c2.mp4", *write_buffer; // Write file variables
   int filename_length;
   int *junk;
   int file_open_error, number_of_bytes;
-  // Write file variables
-  unsigned char *wfilename = "c2.mp4";
  
   /* MPI_Offset is long long */
  
-  MPI_Offset my_offset, my_current_offset, total_number_of_bytes,
-    number_of_bytes_ll, max_number_of_bytes_ll;
-  // Read file
-  MPI_File fh;
-  // Write file
-  MPI_File wfh;
+  MPI_Offset my_offset, my_current_offset, total_number_of_bytes, number_of_bytes_ll, max_number_of_bytes_ll;
+  MPI_File read_fh, write_fh;
   MPI_Status status;
   double start, finish, io_time, longest_io_time;
  
@@ -75,9 +80,9 @@ int main(argc, argv)
     while ((c = getopt(argc, argv, "f:h")) != EOF)
       switch(c) {
       case 'f':
-    filename = optarg;
+    read_filename = optarg;
 #ifdef DEBUG
-    printf("input file: %s\n", filename);
+    printf("input file: %s\n", read_filename);
 #endif
     break;
       case 'h':
@@ -90,18 +95,18 @@ int main(argc, argv)
     break;
       } /* end of switch(c) */
  
-    /* Check if the command line has initialized filename and
+    /* Check if the command line has initialized read_filename and
      * number_of_blocks.
      */
  
-    if (filename == NULL) {
+    if (read_filename == NULL) {
       SYNOPSIS;
       input_error = TRUE;
     }
  
     if (input_error) MPI_Abort(MPI_COMM_WORLD, 1);
  
-    filename_length = strlen(filename) + 1;
+    filename_length = strlen(read_filename) + 1;
  
     /* This is another way of exiting, but it can be done only
        if no files have been opened yet. */
@@ -112,25 +117,28 @@ int main(argc, argv)
        should be OK. */
  
   MPI_Bcast(&filename_length, 1, MPI_INT, MASTER_RANK, MPI_COMM_WORLD);
-  if (! i_am_the_master) filename = (char*) malloc(filename_length);
+  if (! i_am_the_master) {
+    read_filename = (unsigned char *) malloc(filename_length);
+    //write_filename = (unsigned char *) malloc(filename_length);
+  }
 #ifdef DEBUG
-  printf("%3d: allocated space for filename\n", my_rank);
+  printf("%3d: allocated space for read_filename\n", my_rank);
 #endif
-  MPI_Bcast(filename, filename_length, MPI_CHAR, MASTER_RANK, MPI_COMM_WORLD);
+  MPI_Bcast(read_filename, filename_length, MPI_CHAR, MASTER_RANK, MPI_COMM_WORLD);
 #ifdef DEBUG
   printf("%3d: received broadcast\n", my_rank);
-  printf("%3d: filename = %s\n", my_rank, filename);
+  printf("%3d: read_filename = %s\n", my_rank, read_filename);
 #endif
  
   MPI_Barrier(MPI_COMM_WORLD);
  
   /* Default I/O error handling is MPI_ERRORS_RETURN */
  
-  file_open_error = MPI_File_open(MPI_COMM_WORLD, filename,
-                          MPI_MODE_RDONLY, MPI_INFO_NULL, &fh);
+  file_open_error = MPI_File_open(MPI_COMM_WORLD, read_filename,
+                          MPI_MODE_RDONLY, MPI_INFO_NULL, &read_fh);
 
-  file_open_error = MPI_File_open(MPI_COMM_WORLD, wfilename,
-                MPI_MODE_CREATE | MPI_MODE_RDWR, MPI_INFO_NULL, &wfh);
+  file_open_error = MPI_File_open(MPI_COMM_WORLD, write_filename,
+                MPI_MODE_CREATE | MPI_MODE_RDWR, MPI_INFO_NULL, &write_fh);
  
   if (file_open_error != MPI_SUCCESS) {
  
@@ -147,7 +155,7 @@ int main(argc, argv)
     MPI_Abort(MPI_COMM_WORLD, file_open_error);
   }
  
-  MPI_File_get_size(fh, &total_number_of_bytes);
+  MPI_File_get_size(read_fh, &total_number_of_bytes);
 #ifdef DEBUG
   printf("%3d: total_number_of_bytes = %lld\n", my_rank, total_number_of_bytes);
 #endif
@@ -168,7 +176,8 @@ int main(argc, argv)
     else
       number_of_bytes = (int) number_of_bytes_ll;
  
-    read_buffer = (char*) malloc(number_of_bytes);
+    read_buffer = (unsigned char *) malloc(number_of_bytes);
+    write_buffer = (unsigned char *) malloc(number_of_bytes);
 #ifdef DEBUG
     printf("%3d: allocated %d bytes\n", my_rank, number_of_bytes);
 #endif
@@ -177,17 +186,18 @@ int main(argc, argv)
 #ifdef DEBUG
     printf("%3d: my offset = %lld\n", my_rank, my_offset);
 #endif
-    MPI_File_seek(fh, my_offset, MPI_SEEK_SET);
+    MPI_File_seek(read_fh, my_offset, MPI_SEEK_SET);
  
     MPI_Barrier(MPI_COMM_WORLD);
 
     // Write file operarion
-    MPI_File_seek(wfh, my_offset, MPI_SEEK_SET);
+    MPI_File_seek(write_fh, my_offset, MPI_SEEK_SET);
  
     start = MPI_Wtime();
-    MPI_File_read(fh, read_buffer, number_of_bytes, MPI_BYTE, &status);
+    MPI_File_read(read_fh, read_buffer, number_of_bytes, MPI_BYTE, &status);
     // Write file operation
-    MPI_File_write(wfh, read_buffer, number_of_bytes, MPI_BYTE, &status);
+    transpose(read_buffer, &write_buffer, number_of_bytes);
+    MPI_File_write(write_fh, write_buffer, number_of_bytes, MPI_BYTE, &status);
     #ifdef DEBUG
       int m;
       for (m = 0; m < number_of_bytes ; m++) {
@@ -200,7 +210,7 @@ int main(argc, argv)
 #ifdef DEBUG
     printf("%3d: read %d bytes\n", my_rank, count);
 #endif
-    MPI_File_get_position(fh, &my_offset);
+    MPI_File_get_position(read_fh, &my_offset);
 #ifdef DEBUG
     printf("%3d: my offset = %lld\n", my_rank, my_offset);
 #endif
@@ -222,8 +232,8 @@ int main(argc, argv)
     }
   } /* of if(max_number_of_bytes_ll < INT_MAX) */
  
-  MPI_File_close(&fh);
-  MPI_File_close(&wfh);
+  MPI_File_close(&read_fh);
+  MPI_File_close(&write_fh);
  
   MPI_Finalize();
   exit(0);
