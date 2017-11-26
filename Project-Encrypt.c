@@ -1,10 +1,13 @@
 /******************************************************************************
  *                                                                            *
- *  MPI IO Example - Reading from MPI Files                                   *
+ *  Distributed Systems Project of the Andrés Bello Catholic University       *
  *                                                                            *
- *  Each of the processes read a specified number of blocks from a            *
- *  single input file.                                                        *
+ *  Each of the processes read a specified number of blocks from a single     *
+ *  input file, then encrypt and transpose the data and write the same number *
+ *  of ciphered blocks in a new file.                                         *
  *                                                                            *
+ *  Atahualpa Silva F <atahualpasilva@gmail.com>                              *
+ *  Andrea L. Contreras D. <andre.contdi@gmail.com>                           *
  ******************************************************************************
  *                                                                            *
  *  The original code was written by Gustav at University of Indiana in 2003. *
