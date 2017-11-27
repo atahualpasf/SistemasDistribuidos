@@ -29,16 +29,174 @@
 #define FALSE 0
 #define BOOLEAN int
 #define MBYTE 1048576
-#define COLUMN_SIZE 64
-#define SYNOPSIS printf ("synopsis: %s -f <file>\n", argv[0])
+#define COLUMN_SIZE 16
+#define SYNOPSIS printf ("synopsis: %s -f <file> -o <file> -e <boolean>\n", argv[0])
 
 // Functions prototype
-void transpose(unsigned char *read_buffer, unsigned char **write_buffer, int number_of_bytes);
+void encrypt(unsigned char *key_original, unsigned char *phrase, int num, unsigned char **key_caesar, int key_original_len, unsigned char **phrase_encrypt, int phrase_len);
+void decrypt(unsigned char *key_original, unsigned char *key_caesar, unsigned char *phrase_encrypt, int key_original_len, unsigned char **phrase_decrypt, int phrase_encrypt_len);
+void transpose(unsigned char *read_buffer, unsigned char **write_buffer, int number_of_bytes, BOOLEAN encrypt, int my_rank);
 
-void transpose(unsigned char *read_buffer, unsigned char **write_buffer, int number_of_bytes) {
+void encrypt(unsigned char *key_original, unsigned char *phrase, int num, unsigned char **key_caesar, int key_original_len, unsigned char **phrase_encrypt, int phrase_len) {
   int i;
-  for (i=0 ; i<number_of_bytes ; i++) {
-    (*write_buffer)[(i*COLUMN_SIZE)%number_of_bytes] = read_buffer[i];
+  unsigned int j;
+
+  /*Hace cifrado cesar de la clave original ingresada por el usuario.*/
+  printf("\nClave cifrada con Cesar + %d: ", num);
+  for (i = 0 ; i < key_original_len; i++) {
+    (*key_caesar)[i] = key_original[i] + num;
+    printf("%c ", (*key_caesar)[i]);
+  }
+
+  /*Imprime la clave cifrada en hexadecimal.*/
+  printf("\nClave cifrada en Hexadecimal: ");
+  for (i = 0 ; i < key_original_len; i++) {
+    printf("%02X ", (*key_caesar)[i]);
+  }
+
+  /*Imprime la frase a cifrar.*/
+  printf("\nFrase a cifrar: ");
+  for (i = 0 ; i < phrase_len ; i++) {
+    printf("%c  ", phrase[i]);
+  }
+  
+  /*Hace el cifrado por substitución de la frase ingresada segun la clave utilizada.*/
+  printf("\nFrase a cifra en hexadecimal: ");
+  for (i = 0 ; i < phrase_len ; i++) {
+    printf("%02X ", phrase[i]);
+    for (j = 0 ; j < key_original_len ; j++) {
+      if (phrase[i] == (*key_caesar)[j]) {
+        (*phrase_encrypt)[i] = (unsigned char) j;
+        j = 0;
+        break; 
+      } 
+    }
+    if (j == key_original_len) {
+      (*phrase_encrypt)[i] = phrase[i];
+    }
+  }
+}
+
+void decrypt(unsigned char *key_original, unsigned char *key_caesar, unsigned char *phrase_encrypt, int key_original_len, unsigned char **phrase_decrypt, int phrase_encrypt_len) {
+  int i, j;
+  int found = 1;
+
+  /*Hace el descifrado por substitución de la frase ingresada segun la clave utilizada.*/
+  printf("\nFrase a descrifar: ");
+  for (i = 0 ; i < phrase_encrypt_len ; i++) {
+    printf("%c  ", phrase_encrypt[i]);
+    for (j = 0 ; j < key_original_len ; j++) {
+      if (phrase_encrypt[i] == (unsigned char) j)  {
+        printf("%02X ", key_caesar[j]);
+        (*phrase_decrypt)[i] = key_caesar[j];
+        j = 0;
+        break;
+      }
+    }
+    if (j == key_original_len) {
+      (*phrase_decrypt)[i] = phrase_encrypt[i];
+    }
+  }
+}
+
+void transpose(unsigned char *read_buffer, unsigned char **write_buffer, int number_of_bytes, BOOLEAN encrypt, int my_rank) {
+  int i, rows_number, extra_data, iRow, jCol, cont_aux;
+  rows_number = number_of_bytes / COLUMN_SIZE;
+  extra_data = number_of_bytes % COLUMN_SIZE;
+
+  if (my_rank == 0) printf("%d: filas=%d columnas=%d con number_of_bytes=%d\n", my_rank, rows_number, COLUMN_SIZE, number_of_bytes);
+
+  if (encrypt) {
+    if (my_rank == 0) {
+      printf("\nMATRIZ ORIGINAL\n");
+      for (iRow =0 ; iRow < rows_number ; iRow++) {
+        printf("\n");
+        for (jCol =0 ; jCol < COLUMN_SIZE ; jCol++) {
+          cont_aux = iRow * COLUMN_SIZE + jCol;
+          printf("%02X\t", read_buffer[cont_aux]);
+        }
+      }
+      printf("\n");
+      while (cont_aux < number_of_bytes - 1) {
+        cont_aux++;
+        printf("%02X\t", read_buffer[cont_aux]);
+      }
+    }
+
+    for (jCol =0 ; jCol < COLUMN_SIZE ; jCol++) {
+      for (iRow =0 ; iRow < rows_number ; iRow++) {
+        cont_aux = jCol * rows_number + iRow;
+        (*write_buffer)[cont_aux] = read_buffer[iRow * COLUMN_SIZE + jCol];
+      }
+    }
+
+    while (cont_aux < number_of_bytes) {
+      cont_aux++;
+      (*write_buffer)[cont_aux] = read_buffer[cont_aux];
+    }
+
+    if (my_rank == 0) {
+      printf("\n\nMATRIZ MODIFICADA\n");
+      for (jCol =0 ; jCol < COLUMN_SIZE ; jCol++) {
+        printf("\n");
+        for (iRow =0 ; iRow < rows_number ; iRow++) {
+          cont_aux = jCol * rows_number + iRow;
+          printf("%02X\t", (*write_buffer)[cont_aux]);
+        }
+      }
+      printf("\n");
+      while (cont_aux < number_of_bytes - 1) {
+        cont_aux++;
+        printf("%02X\t", read_buffer[cont_aux]);
+        if ((cont_aux+1) % rows_number == 0) printf("\n");
+      }
+    }
+
+  } else {
+    if (my_rank == 0) {
+      printf("\nMATRIZ ORIGINAL\n");
+      for (jCol =0 ; jCol < COLUMN_SIZE ; jCol++) {
+        printf("\n");
+        for (iRow =0 ; iRow < rows_number ; iRow++) {
+          cont_aux = jCol * rows_number + iRow;
+          printf("%02X\t", read_buffer[cont_aux]);
+        }
+      }
+      printf("\n");
+      while (cont_aux < number_of_bytes - 1) {
+        cont_aux++;
+        printf("%02X\t", read_buffer[cont_aux]);
+        if ((cont_aux+1) % rows_number == 0) printf("\n");
+      }
+    }
+
+    for (iRow =0 ; iRow < rows_number ; iRow++) {
+      for (jCol =0 ; jCol < COLUMN_SIZE ; jCol++) {
+        cont_aux = iRow * COLUMN_SIZE + jCol;
+        (*write_buffer)[cont_aux] = read_buffer[jCol * rows_number + iRow];
+      }
+    }
+
+    while (cont_aux < number_of_bytes) {
+      cont_aux++;
+      (*write_buffer)[cont_aux] = read_buffer[cont_aux];
+    }
+
+    if (my_rank == 0) {
+      printf("\n\nMATRIZ MODIFICADA\n");
+      for (iRow =0 ; iRow < rows_number ; iRow++) {
+        printf("\n");
+        for (jCol =0 ; jCol < COLUMN_SIZE ; jCol++) {
+          cont_aux = iRow * COLUMN_SIZE + jCol;
+          printf("%02X\t", (*write_buffer)[cont_aux]);
+        }
+      }
+      printf("\n");
+      while (cont_aux < number_of_bytes - 1) {
+        cont_aux++;
+        printf("%02X\t", read_buffer[cont_aux]);
+      }
+    }
   }
 }
  
@@ -49,12 +207,17 @@ int main(argc, argv)
   /* my variables */
  
   int my_rank, pool_size, last_guy, i, count;
-  BOOLEAN i_am_the_master = FALSE, input_error = FALSE;
+  BOOLEAN i_am_the_master = FALSE, input_error = FALSE, encrypt = TRUE;
   unsigned char *read_filename = NULL, *read_buffer; // Read file variables
-  unsigned char *write_filename = "c2.mp4", *write_buffer; // Write file variables
-  int filename_length;
+  unsigned char *write_filename = NULL, *write_buffer; // Write file variables
+  int read_filename_length, write_filename_length;
   int *junk;
   int file_open_error, number_of_bytes;
+
+  unsigned char *key_original = "hola";
+  unsigned char *key_caesar = NULL;
+  int key_original_len = strlen(key_original);
+  key_caesar = (unsigned char *) malloc(key_original_len);
  
   /* MPI_Offset is long long */
  
@@ -80,22 +243,37 @@ int main(argc, argv)
  
     /* read the command line */
  
-    while ((c = getopt(argc, argv, "f:h")) != EOF)
+    while ((c = getopt(argc, argv, "f:o:e:h")) != EOF)
       switch(c) {
-      case 'f':
-    read_filename = optarg;
-#ifdef DEBUG
-    printf("input file: %s\n", read_filename);
-#endif
-    break;
-      case 'h':
-    SYNOPSIS;
-    input_error = TRUE;
-    break;
-      case '?':
-    SYNOPSIS;
-    input_error = TRUE;
-    break;
+        case 'f':
+          read_filename = optarg;
+          #ifdef DEBUG
+            printf("input file: %s\n", read_filename);
+          #endif
+          break;
+        case 'o':
+          write_filename = optarg;
+          #ifdef DEBUG
+            printf("output file: %s\n", write_filename);
+          #endif
+          break;
+        case 'e':
+          if ((sscanf (optarg, "%d", &encrypt) != 1) || (encrypt != 0 && encrypt != 1)) {
+            SYNOPSIS;
+            input_error = TRUE;
+          }
+          #ifdef DEBUG
+            printf("encrypt: %d\n", encrypt);
+          #endif
+          break;
+        case 'h':
+          SYNOPSIS;
+          input_error = TRUE;
+          break;
+        case '?':
+          SYNOPSIS;
+          input_error = TRUE;
+          break;
       } /* end of switch(c) */
  
     /* Check if the command line has initialized read_filename and
@@ -109,7 +287,8 @@ int main(argc, argv)
  
     if (input_error) MPI_Abort(MPI_COMM_WORLD, 1);
  
-    filename_length = strlen(read_filename) + 1;
+    read_filename_length = strlen(read_filename) + 1;
+    write_filename_length = strlen(write_filename) + 1;
  
     /* This is another way of exiting, but it can be done only
        if no files have been opened yet. */
@@ -119,18 +298,22 @@ int main(argc, argv)
     /* If we got this far, the data read from the command line
        should be OK. */
  
-  MPI_Bcast(&filename_length, 1, MPI_INT, MASTER_RANK, MPI_COMM_WORLD);
+  MPI_Bcast(&read_filename_length, 1, MPI_INT, MASTER_RANK, MPI_COMM_WORLD);
+  MPI_Bcast(&write_filename_length, 1, MPI_INT, MASTER_RANK, MPI_COMM_WORLD);
+  MPI_Bcast(&encrypt, 1, MPI_INT, MASTER_RANK, MPI_COMM_WORLD);
   if (! i_am_the_master) {
-    read_filename = (unsigned char *) malloc(filename_length);
-    //write_filename = (unsigned char *) malloc(filename_length);
+    read_filename = (unsigned char *) malloc(read_filename_length);
+    write_filename = (unsigned char *) malloc(write_filename_length);
   }
 #ifdef DEBUG
   printf("%3d: allocated space for read_filename\n", my_rank);
 #endif
-  MPI_Bcast(read_filename, filename_length, MPI_CHAR, MASTER_RANK, MPI_COMM_WORLD);
+  MPI_Bcast(read_filename, read_filename_length, MPI_CHAR, MASTER_RANK, MPI_COMM_WORLD);
+  MPI_Bcast(write_filename, write_filename_length, MPI_CHAR, MASTER_RANK, MPI_COMM_WORLD);
 #ifdef DEBUG
   printf("%3d: received broadcast\n", my_rank);
   printf("%3d: read_filename = %s\n", my_rank, read_filename);
+  printf("%3d: write_filename = %s\n", my_rank, write_filename);
 #endif
  
   MPI_Barrier(MPI_COMM_WORLD);
@@ -199,13 +382,17 @@ int main(argc, argv)
     start = MPI_Wtime();
     MPI_File_read(read_fh, read_buffer, number_of_bytes, MPI_BYTE, &status);
     // Write file operation
-    transpose(read_buffer, &write_buffer, number_of_bytes);
+    //encrypt(key_original, read_buffer, 3, &key_caesar, key_original_len, &write_buffer, number_of_bytes);
+    //decrypt(key_original, key_caesar, read_buffer, key_original_len, &write_buffer, number_of_bytes);
+    transpose(read_buffer, &write_buffer, number_of_bytes, encrypt, my_rank);
     MPI_File_write(write_fh, write_buffer, number_of_bytes, MPI_BYTE, &status);
     #ifdef DEBUG
       int m;
       for (m = 0; m < number_of_bytes ; m++) {
-        if (m<5)
-          printf("SOY RANK%d %02X %d %d\n", my_rank, read_buffer[m], m + (int) my_offset, m);
+        if (m<5) {
+          printf("READ: SOY RANK%d %02X %d %d\n", my_rank, read_buffer[m], m + (int) my_offset, m);
+          printf("WRITE: SOY RANK%d %02X %d %d\n", my_rank, write_buffer[m], m + (int) my_offset, m);
+        }
       }
     #endif
     finish = MPI_Wtime();
