@@ -33,80 +33,70 @@
 #define SYNOPSIS printf ("synopsis: %s -f <file> -o <file> -e <boolean>\n", argv[0])
 
 // Functions prototype
-void encrypt(unsigned char *key_original, unsigned char *phrase, int num, unsigned char **key_caesar, int key_original_len, unsigned char **phrase_encrypt, int phrase_len);
-void decrypt(unsigned char *key_original, unsigned char *key_caesar, unsigned char *phrase_encrypt, int key_original_len, unsigned char **phrase_decrypt, int phrase_encrypt_len);
-void transpose(unsigned char *read_buffer, unsigned char **write_buffer, int number_of_bytes, BOOLEAN encrypt, int my_rank);
+void encrypt(unsigned char *key_original, unsigned char **key_caesar, unsigned char *vid_title, unsigned char **vid_title_encrypt, unsigned char *content, unsigned char **content_encrypt, int key_original_len, int vid_title_len, int content_len);
+void decrypt(unsigned char *key_original, unsigned char *key_caesar, unsigned char *vid_title_encrypt, unsigned char **vid_title_decrypt, unsigned char *content_encrypt, unsigned char  **content_decrypt, int key_original_len, int vid_title_len, int content_len);
+void transpose(unsigned char *read_buffer, unsigned char **write_buffer, int number_of_bytes, BOOLEAN wanna_encrypt, int my_rank);
 
-void encrypt(unsigned char *key_original, unsigned char *phrase, int num, unsigned char **key_caesar, int key_original_len, unsigned char **phrase_encrypt, int phrase_len) {
-  int i;
-  unsigned int j;
+void encrypt(unsigned char *key_original, unsigned char **key_caesar, unsigned char *vid_title, unsigned char **vid_title_encrypt, unsigned char *content, unsigned char **content_encrypt, int key_original_len, int vid_title_len, int content_len) {
+  int i, CAESAR = 3; /*i para recorridos. CAESAR como constante para Cesar + 3.*/
+  int j; /*Para recorridos y substitución.*/
 
-  /*Hace cifrado cesar de la clave original ingresada por el usuario.*/
-  printf("\nClave cifrada con Cesar + %d: ", num);
+  /*Se hace el cifrado de la clave con Cesar + 3*/
   for (i = 0 ; i < key_original_len; i++) {
-    (*key_caesar)[i] = key_original[i] + num;
-    printf("%c ", (*key_caesar)[i]);
-  }
-
-  /*Imprime la clave cifrada en hexadecimal.*/
-  printf("\nClave cifrada en Hexadecimal: ");
-  for (i = 0 ; i < key_original_len; i++) {
-    printf("%02X ", (*key_caesar)[i]);
-  }
-
-  /*Imprime la frase a cifrar.*/
-  printf("\nFrase a cifrar: ");
-  for (i = 0 ; i < phrase_len ; i++) {
-    printf("%c  ", phrase[i]);
+    (*key_caesar)[i] = key_original[i] + CAESAR;
   }
   
-  /*Hace el cifrado por substitución de la frase ingresada segun la clave utilizada.*/
-  printf("\nFrase a cifra en hexadecimal: ");
-  for (i = 0 ; i < phrase_len ; i++) {
-    printf("%02X ", phrase[i]);
+  /*Se hace el cifrado por substitución del nombre del video.*/
+  for (i = 0 ; i < vid_title_len ; i++) {
     for (j = 0 ; j < key_original_len ; j++) {
-      if (phrase[i] == (*key_caesar)[j]) {
-        (*phrase_encrypt)[i] = (unsigned char) j;
+      if (vid_title[i] == (*key_caesar)[j]) {
+        (*vid_title_encrypt)[i] = (unsigned char) j + 1;
         j = 0;
         break; 
       } 
     }
     if (j == key_original_len) {
-      (*phrase_encrypt)[i] = phrase[i];
+      (*vid_title_encrypt)[i] = vid_title[i];
     }
+  }
+
+  /*Se hace el cifrado de la frase o contenido del archivo con Cesar + la longitud de la clave.*/
+  for (i = 0 ; i < content_len; i++) {
+    (*content_encrypt)[i] = content[i] + key_original_len;
   }
 }
 
-void decrypt(unsigned char *key_original, unsigned char *key_caesar, unsigned char *phrase_encrypt, int key_original_len, unsigned char **phrase_decrypt, int phrase_encrypt_len) {
+void decrypt(unsigned char *key_original, unsigned char *key_caesar, unsigned char *vid_title_encrypt, unsigned char **vid_title_decrypt, unsigned char *content_encrypt, unsigned char  **content_decrypt, int key_original_len, int vid_title_len, int content_len) {
   int i, j;
-  int found = 1;
 
-  /*Hace el descifrado por substitución de la frase ingresada segun la clave utilizada.*/
-  printf("\nFrase a descrifar: ");
-  for (i = 0 ; i < phrase_encrypt_len ; i++) {
-    printf("%c  ", phrase_encrypt[i]);
+  /*Hace el descifrado del nombre del video*/
+  for (i = 0 ; i < vid_title_len ; i++) {
     for (j = 0 ; j < key_original_len ; j++) {
-      if (phrase_encrypt[i] == (unsigned char) j)  {
-        printf("%02X ", key_caesar[j]);
-        (*phrase_decrypt)[i] = key_caesar[j];
+      if (vid_title_encrypt[i] == (unsigned char) j + 1)  {
+        (*vid_title_decrypt)[i] = key_caesar[j];
         j = 0;
         break;
       }
     }
     if (j == key_original_len) {
-      (*phrase_decrypt)[i] = phrase_encrypt[i];
+      (*vid_title_decrypt)[i] = vid_title_encrypt[i];
     }
+  }
+
+  /*Se hace el descifrado de la frase o contenido del archivo con Cesar - la longitud de la clave.*/
+  for (i = 0 ; i < content_len; i++) {
+    (*content_decrypt)[i] = content_encrypt[i] - key_original_len;
   }
 }
 
-void transpose(unsigned char *read_buffer, unsigned char **write_buffer, int number_of_bytes, BOOLEAN encrypt, int my_rank) {
+void transpose(unsigned char *read_buffer, unsigned char **write_buffer, int number_of_bytes, BOOLEAN wanna_encrypt, int my_rank) {
   int i, rows_number, extra_data, iRow, jCol, cont_aux;
   rows_number = number_of_bytes / COLUMN_SIZE;
   extra_data = number_of_bytes % COLUMN_SIZE;
 
   if (my_rank == 0) printf("%d: filas=%d columnas=%d con number_of_bytes=%d\n", my_rank, rows_number, COLUMN_SIZE, number_of_bytes);
 
-  if (encrypt) {
+  if (wanna_encrypt) {
     if (my_rank == 0) {
       printf("\nMATRIZ ORIGINAL\n");
       for (iRow =0 ; iRow < rows_number ; iRow++) {
@@ -207,7 +197,7 @@ int main(argc, argv)
   /* my variables */
  
   int my_rank, pool_size, last_guy, i, count;
-  BOOLEAN i_am_the_master = FALSE, input_error = FALSE, encrypt = TRUE;
+  BOOLEAN i_am_the_master = FALSE, input_error = FALSE, wanna_encrypt = TRUE;
   unsigned char *read_filename = NULL, *read_buffer; // Read file variables
   unsigned char *write_filename = NULL, *write_buffer; // Write file variables
   int read_filename_length, write_filename_length;
@@ -216,8 +206,19 @@ int main(argc, argv)
 
   unsigned char *key_original = "hola";
   unsigned char *key_caesar = NULL;
+  unsigned char *vid_title_encrypt = NULL;
+  unsigned char *vid_title_decrypt = NULL;
+  unsigned char *vid_title = "c";
+  unsigned char *vid_file = NULL;
+  int vid_title_len = strlen(vid_title);
   int key_original_len = strlen(key_original);
   key_caesar = (unsigned char *) malloc(key_original_len);
+
+  /*Conocer la longitud de la clave ingrsada por el usuario.*/
+  vid_title_encrypt = (unsigned char *) malloc(vid_title_len);
+  vid_title_decrypt = (unsigned char *) malloc(vid_title_len);
+
+  vid_file = (unsigned char *) malloc(vid_title_len + 5);
  
   /* MPI_Offset is long long */
  
@@ -258,12 +259,12 @@ int main(argc, argv)
           #endif
           break;
         case 'e':
-          if ((sscanf (optarg, "%d", &encrypt) != 1) || (encrypt != 0 && encrypt != 1)) {
+          if ((sscanf (optarg, "%d", &wanna_encrypt) != 1) || (wanna_encrypt != 0 && wanna_encrypt != 1)) {
             SYNOPSIS;
             input_error = TRUE;
           }
           #ifdef DEBUG
-            printf("encrypt: %d\n", encrypt);
+            printf("wanna_encrypt: %d\n", wanna_encrypt);
           #endif
           break;
         case 'h':
@@ -300,7 +301,7 @@ int main(argc, argv)
  
   MPI_Bcast(&read_filename_length, 1, MPI_INT, MASTER_RANK, MPI_COMM_WORLD);
   MPI_Bcast(&write_filename_length, 1, MPI_INT, MASTER_RANK, MPI_COMM_WORLD);
-  MPI_Bcast(&encrypt, 1, MPI_INT, MASTER_RANK, MPI_COMM_WORLD);
+  MPI_Bcast(&wanna_encrypt, 1, MPI_INT, MASTER_RANK, MPI_COMM_WORLD);
   if (! i_am_the_master) {
     read_filename = (unsigned char *) malloc(read_filename_length);
     write_filename = (unsigned char *) malloc(write_filename_length);
@@ -382,9 +383,11 @@ int main(argc, argv)
     start = MPI_Wtime();
     MPI_File_read(read_fh, read_buffer, number_of_bytes, MPI_BYTE, &status);
     // Write file operation
-    //encrypt(key_original, read_buffer, 3, &key_caesar, key_original_len, &write_buffer, number_of_bytes);
-    //decrypt(key_original, key_caesar, read_buffer, key_original_len, &write_buffer, number_of_bytes);
-    transpose(read_buffer, &write_buffer, number_of_bytes, encrypt, my_rank);
+    transpose(read_buffer, &write_buffer, number_of_bytes, wanna_encrypt, my_rank);
+    if (wanna_encrypt)
+      encrypt(key_original, &key_caesar, vid_title, &vid_title_encrypt, write_buffer, &write_buffer, key_original_len, 1, number_of_bytes);
+    else
+      decrypt(key_original, key_caesar, vid_title_encrypt, &vid_title_decrypt, write_buffer, &write_buffer, key_original_len, 1, number_of_bytes);
     MPI_File_write(write_fh, write_buffer, number_of_bytes, MPI_BYTE, &status);
     #ifdef DEBUG
       int m;
