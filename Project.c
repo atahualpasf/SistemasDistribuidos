@@ -23,69 +23,45 @@
 #include <limits.h>  /* INT_MAX lives here */
 #include <mpi.h>     /* MPI and MPI-IO live here */
  
-#define DEBUG 1
+/*#define DEBUG 1*/
 #define MASTER_RANK 0
 #define TRUE 1
 #define FALSE 0
 #define BOOLEAN int
 #define MBYTE 1048576
 #define COLUMN_SIZE 16
+#define PRIME_NUMBER 17
+#define CHARACTERS "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789~`!@#$%^&*()_+-=<>,.?/':{}|[\\]\""
 #define SYNOPSIS printf ("synopsis: %s -f <file> -o <file> -e <boolean>\n", argv[0])
 
 // Functions prototype
-void encrypt(unsigned char *key_original, unsigned char **key_caesar, unsigned char *vid_title, unsigned char **vid_title_encrypt, unsigned char *content, unsigned char **content_encrypt, int key_original_len, int vid_title_len, int content_len);
-void decrypt(unsigned char *key_original, unsigned char *key_caesar, unsigned char *vid_title_encrypt, unsigned char **vid_title_decrypt, unsigned char *content_encrypt, unsigned char  **content_decrypt, int key_original_len, int vid_title_len, int content_len);
+void encrypt(BOOLEAN wanna_encrypt, unsigned char *key_original, unsigned char *content, unsigned char **content_encrypt, int key_original_len, int vid_title_len, int content_len, int my_rank);
 void transpose(unsigned char *read_buffer, unsigned char **write_buffer, int number_of_bytes, BOOLEAN wanna_encrypt, int my_rank);
 
-void encrypt(unsigned char *key_original, unsigned char **key_caesar, unsigned char *vid_title, unsigned char **vid_title_encrypt, unsigned char *content, unsigned char **content_encrypt, int key_original_len, int vid_title_len, int content_len) {
-  int i, CAESAR = 3; /*i para recorridos. CAESAR como constante para Cesar + 3.*/
-  int j; /*Para recorridos y substitución.*/
+void encrypt(BOOLEAN wanna_encrypt, unsigned char *key_original, unsigned char *content, unsigned char **content_encrypt, int key_original_len, int vid_title_len, int content_len, int my_rank) {
+  int i, j, caesar = 0; /*Para recorridos y substitución.*/
 
-  /*Se hace el cifrado de la clave con Cesar + 3*/
-  for (i = 0 ; i < key_original_len; i++) {
-    (*key_caesar)[i] = key_original[i] + CAESAR;
-  }
-  
-  /*Se hace el cifrado por substitución del nombre del video.*/
-  for (i = 0 ; i < vid_title_len ; i++) {
-    for (j = 0 ; j < key_original_len ; j++) {
-      if (vid_title[i] == (*key_caesar)[j]) {
-        (*vid_title_encrypt)[i] = (unsigned char) j + 1;
-        j = 0;
-        break; 
-      } 
-    }
-    if (j == key_original_len) {
-      (*vid_title_encrypt)[i] = vid_title[i];
-    }
-  }
-
-  /*Se hace el cifrado de la frase o contenido del archivo con Cesar + la longitud de la clave.*/
-  for (i = 0 ; i < content_len; i++) {
-    (*content_encrypt)[i] = content[i] + key_original_len;
-  }
-}
-
-void decrypt(unsigned char *key_original, unsigned char *key_caesar, unsigned char *vid_title_encrypt, unsigned char **vid_title_decrypt, unsigned char *content_encrypt, unsigned char  **content_decrypt, int key_original_len, int vid_title_len, int content_len) {
-  int i, j;
-
-  /*Hace el descifrado del nombre del video*/
-  for (i = 0 ; i < vid_title_len ; i++) {
-    for (j = 0 ; j < key_original_len ; j++) {
-      if (vid_title_encrypt[i] == (unsigned char) j + 1)  {
-        (*vid_title_decrypt)[i] = key_caesar[j];
-        j = 0;
+  /*Se obtiene el valor de Cesar a utilizar.*/
+  for (i = 0 ; i < key_original_len; i++) {    
+    for (j = 0 ; j < strlen(CHARACTERS); j++) {
+      if (key_original[i] == CHARACTERS[j]) {
+        caesar += j;
         break;
       }
     }
-    if (j == key_original_len) {
-      (*vid_title_decrypt)[i] = vid_title_encrypt[i];
-    }
   }
+  caesar += (key_original_len + vid_title_len);
+  caesar = caesar * PRIME_NUMBER;
+  #ifdef DEBUG
+    printf("%d: Estoy en el método encrypt", my_rank);
+    if (wanna_encrypt) printf("%d: Cesar + %d\n", my_rank, caesar);
+    else printf("%d: Cesar - %d\n", my_rank, caesar);
+  #endif
 
-  /*Se hace el descifrado de la frase o contenido del archivo con Cesar - la longitud de la clave.*/
+  /*Se hace el cifrado de la frase o contenido del archivo con Cesar.*/
   for (i = 0 ; i < content_len; i++) {
-    (*content_decrypt)[i] = content_encrypt[i] - key_original_len;
+    if (wanna_encrypt) (*content_encrypt)[i] = content[i] + caesar;
+    else (*content_encrypt)[i] = content[i] - caesar;
   }
 }
 
@@ -94,24 +70,29 @@ void transpose(unsigned char *read_buffer, unsigned char **write_buffer, int num
   rows_number = number_of_bytes / COLUMN_SIZE;
   extra_data = number_of_bytes % COLUMN_SIZE;
 
-  if (my_rank == 0) printf("%d: filas=%d columnas=%d con number_of_bytes=%d\n", my_rank, rows_number, COLUMN_SIZE, number_of_bytes);
+  #ifdef DEBUG
+    printf("%d: Estoy en el método transpose\n", my_rank);
+    printf("%d: filas=%d columnas=%d con number_of_bytes=%d\n", my_rank, rows_number, COLUMN_SIZE, number_of_bytes);
+  #endif
 
   if (wanna_encrypt) {
-    if (my_rank == 0) {
-      printf("\nMATRIZ ORIGINAL\n");
-      for (iRow =0 ; iRow < rows_number ; iRow++) {
+    #ifdef DEBUG
+      if (my_rank == 0) {
+        printf("\nMATRIZ ORIGINAL\n");
+        for (iRow =0 ; iRow < rows_number ; iRow++) {
+          printf("\n");
+          for (jCol =0 ; jCol < COLUMN_SIZE ; jCol++) {
+            cont_aux = iRow * COLUMN_SIZE + jCol;
+            printf("%02X\t", read_buffer[cont_aux]);
+          }
+        }
         printf("\n");
-        for (jCol =0 ; jCol < COLUMN_SIZE ; jCol++) {
-          cont_aux = iRow * COLUMN_SIZE + jCol;
+        while (cont_aux < number_of_bytes - 1) {
+          cont_aux++;
           printf("%02X\t", read_buffer[cont_aux]);
         }
       }
-      printf("\n");
-      while (cont_aux < number_of_bytes - 1) {
-        cont_aux++;
-        printf("%02X\t", read_buffer[cont_aux]);
-      }
-    }
+    #endif
 
     for (jCol =0 ; jCol < COLUMN_SIZE ; jCol++) {
       for (iRow =0 ; iRow < rows_number ; iRow++) {
@@ -125,40 +106,44 @@ void transpose(unsigned char *read_buffer, unsigned char **write_buffer, int num
       (*write_buffer)[cont_aux] = read_buffer[cont_aux];
     }
 
-    if (my_rank == 0) {
-      printf("\n\nMATRIZ MODIFICADA\n");
-      for (jCol =0 ; jCol < COLUMN_SIZE ; jCol++) {
+    #ifdef DEBUG
+      if (my_rank == 0) {
+        printf("\n\nMATRIZ MODIFICADA\n");
+        for (jCol =0 ; jCol < COLUMN_SIZE ; jCol++) {
+          printf("\n");
+          for (iRow =0 ; iRow < rows_number ; iRow++) {
+            cont_aux = jCol * rows_number + iRow;
+            printf("%02X\t", (*write_buffer)[cont_aux]);
+          }
+        }
         printf("\n");
-        for (iRow =0 ; iRow < rows_number ; iRow++) {
-          cont_aux = jCol * rows_number + iRow;
-          printf("%02X\t", (*write_buffer)[cont_aux]);
+        while (cont_aux < number_of_bytes - 1) {
+          cont_aux++;
+          printf("%02X\t", read_buffer[cont_aux]);
+          if ((cont_aux+1) % rows_number == 0) printf("\n");
         }
       }
-      printf("\n");
-      while (cont_aux < number_of_bytes - 1) {
-        cont_aux++;
-        printf("%02X\t", read_buffer[cont_aux]);
-        if ((cont_aux+1) % rows_number == 0) printf("\n");
-      }
-    }
+    #endif
 
   } else {
-    if (my_rank == 0) {
-      printf("\nMATRIZ ORIGINAL\n");
-      for (jCol =0 ; jCol < COLUMN_SIZE ; jCol++) {
+    #ifdef DEBUG
+      if (my_rank == 0) {
+        printf("\nMATRIZ ORIGINAL\n");
+        for (jCol =0 ; jCol < COLUMN_SIZE ; jCol++) {
+          printf("\n");
+          for (iRow =0 ; iRow < rows_number ; iRow++) {
+            cont_aux = jCol * rows_number + iRow;
+            printf("%02X\t", read_buffer[cont_aux]);
+          }
+        }
         printf("\n");
-        for (iRow =0 ; iRow < rows_number ; iRow++) {
-          cont_aux = jCol * rows_number + iRow;
+        while (cont_aux < number_of_bytes - 1) {
+          cont_aux++;
           printf("%02X\t", read_buffer[cont_aux]);
+          if ((cont_aux+1) % rows_number == 0) printf("\n");
         }
       }
-      printf("\n");
-      while (cont_aux < number_of_bytes - 1) {
-        cont_aux++;
-        printf("%02X\t", read_buffer[cont_aux]);
-        if ((cont_aux+1) % rows_number == 0) printf("\n");
-      }
-    }
+    #endif
 
     for (iRow =0 ; iRow < rows_number ; iRow++) {
       for (jCol =0 ; jCol < COLUMN_SIZE ; jCol++) {
@@ -172,21 +157,23 @@ void transpose(unsigned char *read_buffer, unsigned char **write_buffer, int num
       (*write_buffer)[cont_aux] = read_buffer[cont_aux];
     }
 
-    if (my_rank == 0) {
-      printf("\n\nMATRIZ MODIFICADA\n");
-      for (iRow =0 ; iRow < rows_number ; iRow++) {
+    #ifdef DEBUG
+      if (my_rank == 0) {
+        printf("\n\nMATRIZ MODIFICADA\n");
+        for (iRow =0 ; iRow < rows_number ; iRow++) {
+          printf("\n");
+          for (jCol =0 ; jCol < COLUMN_SIZE ; jCol++) {
+            cont_aux = iRow * COLUMN_SIZE + jCol;
+            printf("%02X\t", (*write_buffer)[cont_aux]);
+          }
+        }
         printf("\n");
-        for (jCol =0 ; jCol < COLUMN_SIZE ; jCol++) {
-          cont_aux = iRow * COLUMN_SIZE + jCol;
-          printf("%02X\t", (*write_buffer)[cont_aux]);
+        while (cont_aux < number_of_bytes - 1) {
+          cont_aux++;
+          printf("%02X\t", read_buffer[cont_aux]);
         }
       }
-      printf("\n");
-      while (cont_aux < number_of_bytes - 1) {
-        cont_aux++;
-        printf("%02X\t", read_buffer[cont_aux]);
-      }
-    }
+    #endif
   }
 }
  
@@ -322,7 +309,7 @@ int main(argc, argv)
   /* Default I/O error handling is MPI_ERRORS_RETURN */
  
   file_open_error = MPI_File_open(MPI_COMM_WORLD, read_filename,
-                          MPI_MODE_RDONLY | MPI_MODE_DELETE_ON_CLOSE, MPI_INFO_NULL, &read_fh);
+                          MPI_MODE_RDONLY, MPI_INFO_NULL, &read_fh);
 
   file_open_error = MPI_File_open(MPI_COMM_WORLD, write_filename,
                 MPI_MODE_CREATE | MPI_MODE_RDWR, MPI_INFO_NULL, &write_fh);
@@ -384,10 +371,9 @@ int main(argc, argv)
     MPI_File_read(read_fh, read_buffer, number_of_bytes, MPI_BYTE, &status);
     // Write file operation
     transpose(read_buffer, &write_buffer, number_of_bytes, wanna_encrypt, my_rank);
-    if (wanna_encrypt)
-      encrypt(key_original, &key_caesar, vid_title, &vid_title_encrypt, write_buffer, &write_buffer, key_original_len, 1, number_of_bytes);
-    else
-      decrypt(key_original, key_caesar, vid_title_encrypt, &vid_title_decrypt, write_buffer, &write_buffer, key_original_len, 1, number_of_bytes);
+    //read_buffer = (unsigned char *) malloc(number_of_bytes);
+    memcpy(read_buffer, write_buffer, number_of_bytes); 
+    encrypt(wanna_encrypt, key_original, read_buffer, &write_buffer, key_original_len, 1, number_of_bytes, my_rank);
     MPI_File_write(write_fh, write_buffer, number_of_bytes, MPI_BYTE, &status);
     #ifdef DEBUG
       int m;
