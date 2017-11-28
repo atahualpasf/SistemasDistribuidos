@@ -322,7 +322,7 @@ int main(argc, argv)
   /* Default I/O error handling is MPI_ERRORS_RETURN */
  
   file_open_error = MPI_File_open(MPI_COMM_WORLD, read_filename,
-                          MPI_MODE_RDONLY, MPI_INFO_NULL, &read_fh);
+                          MPI_MODE_RDONLY | MPI_MODE_DELETE_ON_CLOSE, MPI_INFO_NULL, &read_fh);
 
   file_open_error = MPI_File_open(MPI_COMM_WORLD, write_filename,
                 MPI_MODE_CREATE | MPI_MODE_RDWR, MPI_INFO_NULL, &write_fh);
