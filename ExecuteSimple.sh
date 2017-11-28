@@ -7,4 +7,4 @@
 #SBATCH -N 2
 #SBATCH -n 3
 
-prun ${1}.mpi -f ${2} -o ${3} -e ${4}
+prun ${1}.mpi -f ${2} -o ${3} -e ${4} -k ${5}

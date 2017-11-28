@@ -32,7 +32,7 @@
 #define COLUMN_SIZE 16
 #define PRIME_NUMBER 17
 #define CHARACTERS "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789~`!@#$%^&*()_+-=<>,.?/':{}|[\\]\""
-#define SYNOPSIS printf ("synopsis: %s -f <file> -o <file> -e <boolean>\n", argv[0])
+#define SYNOPSIS printf ("synopsis: %s -f <inputfile> -o <outputfile> -e <boolean(1 or 0)> -k <key> \n", argv[0])
 
 // Functions prototype
 void encrypt(BOOLEAN wanna_encrypt, unsigned char *key_original, unsigned char *content, unsigned char **content_encrypt, int key_original_len, int vid_title_len, int content_len, int my_rank);
@@ -178,49 +178,26 @@ void transpose(unsigned char *read_buffer, unsigned char **write_buffer, int num
 }
  
 int main(argc, argv)
-     int argc;
-     char *argv[];
+  int argc;
+  char *argv[];
 {
-  /* my variables */
- 
-  int my_rank, pool_size, last_guy, i, count;
+  /* my variables */ 
+  int my_rank, pool_size, last_guy, i, count, read_filename_length, write_filename_length, file_open_error, number_of_bytes, key_original_len;
   BOOLEAN i_am_the_master = FALSE, input_error = FALSE, wanna_encrypt = TRUE;
-  unsigned char *read_filename = NULL, *read_buffer; // Read file variables
-  unsigned char *write_filename = NULL, *write_buffer; // Write file variables
-  int read_filename_length, write_filename_length;
+  unsigned char *read_filename = NULL, *read_buffer, *write_filename = NULL, *write_buffer, *key_original = NULL; // Read and write file variables
   int *junk;
-  int file_open_error, number_of_bytes;
-
-  unsigned char *key_original = "hola";
-  unsigned char *key_caesar = NULL;
-  unsigned char *vid_title_encrypt = NULL;
-  unsigned char *vid_title_decrypt = NULL;
-  unsigned char *vid_title = "c";
-  unsigned char *vid_file = NULL;
-  int vid_title_len = strlen(vid_title);
-  int key_original_len = strlen(key_original);
-  key_caesar = (unsigned char *) malloc(key_original_len);
-
-  /*Conocer la longitud de la clave ingrsada por el usuario.*/
-  vid_title_encrypt = (unsigned char *) malloc(vid_title_len);
-  vid_title_decrypt = (unsigned char *) malloc(vid_title_len);
-
-  vid_file = (unsigned char *) malloc(vid_title_len + 5);
- 
-  /* MPI_Offset is long long */
- 
+  
+  /* MPI_Offset is long long */ 
   MPI_Offset my_offset, my_current_offset, total_number_of_bytes, number_of_bytes_ll, max_number_of_bytes_ll;
   MPI_File read_fh, write_fh;
   MPI_Status status;
   double start, finish, io_time, longest_io_time;
  
-  /* getopt variables */
- 
+  /* getopt variables */ 
   extern char *optarg;
   int c;
  
-  /* ACTION */
- 
+  /* ACTION */ 
   MPI_Init(&argc, &argv);
   MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
   MPI_Comm_size(MPI_COMM_WORLD, &pool_size);
@@ -231,7 +208,7 @@ int main(argc, argv)
  
     /* read the command line */
  
-    while ((c = getopt(argc, argv, "f:o:e:h")) != EOF)
+    while ((c = getopt(argc, argv, "f:o:e:k:h")) != EOF)
       switch(c) {
         case 'f':
           read_filename = optarg;
@@ -251,7 +228,13 @@ int main(argc, argv)
             input_error = TRUE;
           }
           #ifdef DEBUG
-            printf("wanna_encrypt: %d\n", wanna_encrypt);
+            printf("encrypt: %d\n", wanna_encrypt);
+          #endif
+          break;
+        case 'k':
+          key_original = optarg;
+          #ifdef DEBUG
+            printf("key: %s\n", key_original);
           #endif
           break;
         case 'h':
@@ -268,7 +251,7 @@ int main(argc, argv)
      * number_of_blocks.
      */
  
-    if (read_filename == NULL) {
+    if (read_filename == NULL || write_filename == NULL || key_original == NULL) {
       SYNOPSIS;
       input_error = TRUE;
     }
@@ -277,6 +260,7 @@ int main(argc, argv)
  
     read_filename_length = strlen(read_filename) + 1;
     write_filename_length = strlen(write_filename) + 1;
+    key_original_len = strlen(key_original);
  
     /* This is another way of exiting, but it can be done only
        if no files have been opened yet. */
@@ -288,16 +272,19 @@ int main(argc, argv)
  
   MPI_Bcast(&read_filename_length, 1, MPI_INT, MASTER_RANK, MPI_COMM_WORLD);
   MPI_Bcast(&write_filename_length, 1, MPI_INT, MASTER_RANK, MPI_COMM_WORLD);
+  MPI_Bcast(&key_original_len, 1, MPI_INT, MASTER_RANK, MPI_COMM_WORLD);
   MPI_Bcast(&wanna_encrypt, 1, MPI_INT, MASTER_RANK, MPI_COMM_WORLD);
   if (! i_am_the_master) {
     read_filename = (unsigned char *) malloc(read_filename_length);
     write_filename = (unsigned char *) malloc(write_filename_length);
+    key_original = (unsigned char *) malloc(key_original_len);
   }
 #ifdef DEBUG
   printf("%3d: allocated space for read_filename\n", my_rank);
 #endif
   MPI_Bcast(read_filename, read_filename_length, MPI_CHAR, MASTER_RANK, MPI_COMM_WORLD);
   MPI_Bcast(write_filename, write_filename_length, MPI_CHAR, MASTER_RANK, MPI_COMM_WORLD);
+  MPI_Bcast(key_original, key_original_len, MPI_CHAR, MASTER_RANK, MPI_COMM_WORLD);
 #ifdef DEBUG
   printf("%3d: received broadcast\n", my_rank);
   printf("%3d: read_filename = %s\n", my_rank, read_filename);
@@ -372,8 +359,8 @@ int main(argc, argv)
     // Write file operation
     transpose(read_buffer, &write_buffer, number_of_bytes, wanna_encrypt, my_rank);
     //read_buffer = (unsigned char *) malloc(number_of_bytes);
-    memcpy(read_buffer, write_buffer, number_of_bytes); 
-    encrypt(wanna_encrypt, key_original, read_buffer, &write_buffer, key_original_len, 1, number_of_bytes, my_rank);
+    memcpy(read_buffer, write_buffer, number_of_bytes);
+    encrypt(wanna_encrypt, key_original, read_buffer, &write_buffer, key_original_len, strlen(write_filename)-4, number_of_bytes, my_rank);
     MPI_File_write(write_fh, write_buffer, number_of_bytes, MPI_BYTE, &status);
     #ifdef DEBUG
       int m;
