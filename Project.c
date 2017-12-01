@@ -52,11 +52,10 @@ void encrypt(BOOLEAN wanna_encrypt, unsigned char *key_original, unsigned char *
   }
   caesar += key_original_len;
   caesar = (caesar * PRIME_NUMBER)%(characters_len-1);
-  printf("Caesar =  %d, characters_len = %d\n", caesar, characters_len);
   #ifdef DEBUG
     printf("%d: Estoy en el método encrypt", my_rank);
-    if (wanna_encrypt) printf("%d: Cesar + %d\n", my_rank, caesar);
-    else printf("%d: Cesar - %d\n", my_rank, caesar);
+    if (wanna_encrypt) printf("%d:Encrypt with Cesar + %d\n", my_rank, caesar);
+    else printf("%d: Decrypt with Cesar - %d\n", my_rank, caesar);
   #endif
 
   /*Se hace el cifrado de la frase o contenido del archivo con Cesar.*/
@@ -80,10 +79,10 @@ void transpose(unsigned char *read_buffer, unsigned char **write_buffer, int num
   rows_number = number_of_bytes / columns_number;
   extra_data = number_of_bytes % columns_number;
 
-  /*#ifdef DEBUG
+  #ifdef DEBUG
     printf("%d: Estoy en el método transpose\n", my_rank);
     printf("%d: filas=%d columnas=%d con number_of_bytes=%d\n", my_rank, rows_number, COLUMN_SIZE, number_of_bytes);
-  #endif*/
+  #endif
 
   if (wanna_encrypt) {
     #ifdef DEBUG
@@ -201,7 +200,7 @@ int main(argc, argv)
   MPI_Offset my_offset, my_current_offset, total_number_of_bytes, number_of_bytes_ll, max_number_of_bytes_ll;
   MPI_File read_fh, write_fh;
   MPI_Status status;
-  double start, finish, io_time, longest_io_time;
+  double start, finish, io_time, longest_io_time, start_program, finish_program, ejecution_time, total_ejecution_time;
  
   /* getopt variables */ 
   extern char *optarg;
@@ -211,6 +210,7 @@ int main(argc, argv)
   MPI_Init(&argc, &argv);
   MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
   MPI_Comm_size(MPI_COMM_WORLD, &pool_size);
+  start_program = MPI_Wtime();
   last_guy = pool_size - 1;
   if (my_rank == MASTER_RANK) i_am_the_master = TRUE;
  
@@ -306,7 +306,7 @@ int main(argc, argv)
   /* Default I/O error handling is MPI_ERRORS_RETURN */
  
   file_open_error = MPI_File_open(MPI_COMM_WORLD, read_filename,
-                          MPI_MODE_RDONLY, MPI_INFO_NULL, &read_fh);
+                          MPI_MODE_RDONLY | MPI_MODE_DELETE_ON_CLOSE, MPI_INFO_NULL, &read_fh);
 
   file_open_error = MPI_File_open(MPI_COMM_WORLD, write_filename,
                 MPI_MODE_CREATE | MPI_MODE_RDWR, MPI_INFO_NULL, &write_fh);
@@ -407,6 +407,15 @@ int main(argc, argv)
       printf("Consider running on more nodes.\n");
     }
   } /* of if(max_number_of_bytes_ll < INT_MAX) */
+
+  finish_program = MPI_Wtime();
+  ejecution_time = finish_program - start_program;
+  printf("%d: Ejecution time: %f seconds\n", my_rank, ejecution_time);
+  MPI_Allreduce(&ejecution_time, &total_ejecution_time, 1, MPI_DOUBLE, MPI_SUM,
+          MPI_COMM_WORLD);
+  if (i_am_the_master) {
+    printf("%d: Avg ejecution time: %f seconds\n", my_rank, total_ejecution_time / pool_size); 
+  }
  
   MPI_File_close(&read_fh);
   MPI_File_close(&write_fh);
