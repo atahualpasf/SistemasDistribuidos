@@ -39,19 +39,20 @@ void encrypt(BOOLEAN wanna_encrypt, unsigned char *key_original, unsigned char *
 void transpose(unsigned char *read_buffer, unsigned char **write_buffer, int number_of_bytes, BOOLEAN wanna_encrypt, int my_rank);
 
 void encrypt(BOOLEAN wanna_encrypt, unsigned char *key_original, unsigned char *content, unsigned char **content_encrypt, int key_original_len, int vid_title_len, int content_len, int my_rank) {
-  int i, j, caesar = 0; /*Para recorridos y substitución.*/
+  int i, j, caesar = 0, characters_len = strlen(CHARACTERS), encrypt_iterator; /*Para recorridos y substitución.*/
 
   /*Se obtiene el valor de Cesar a utilizar.*/
   for (i = 0 ; i < key_original_len; i++) {    
-    for (j = 0 ; j < strlen(CHARACTERS); j++) {
+    for (j = 0 ; j < characters_len; j++) {
       if (key_original[i] == CHARACTERS[j]) {
         caesar += j;
         break;
       }
     }
   }
-  caesar += (key_original_len + vid_title_len);
-  caesar = caesar * PRIME_NUMBER;
+  caesar += key_original_len;
+  caesar = (caesar * PRIME_NUMBER)%(characters_len-1);
+  printf("Caesar =  %d, characters_len = %d\n", caesar, characters_len);
   #ifdef DEBUG
     printf("%d: Estoy en el método encrypt", my_rank);
     if (wanna_encrypt) printf("%d: Cesar + %d\n", my_rank, caesar);
@@ -60,20 +61,29 @@ void encrypt(BOOLEAN wanna_encrypt, unsigned char *key_original, unsigned char *
 
   /*Se hace el cifrado de la frase o contenido del archivo con Cesar.*/
   for (i = 0 ; i < content_len; i++) {
-    if (wanna_encrypt) (*content_encrypt)[i] = content[i] + caesar;
-    else (*content_encrypt)[i] = content[i] - caesar;
+    if (wanna_encrypt == TRUE) {
+      (*content_encrypt)[i] = content[i] + caesar;
+    } else {
+      if (wanna_encrypt == FALSE) {
+        (*content_encrypt)[i] = content[i] - caesar;
+      }
+    }
   }
 }
 
 void transpose(unsigned char *read_buffer, unsigned char **write_buffer, int number_of_bytes, BOOLEAN wanna_encrypt, int my_rank) {
-  int i, rows_number, extra_data, iRow, jCol, cont_aux;
-  rows_number = number_of_bytes / COLUMN_SIZE;
-  extra_data = number_of_bytes % COLUMN_SIZE;
+  int i, rows_number, extra_data, iRow, jCol, cont_aux, columns_number;
+  if (number_of_bytes<(COLUMN_SIZE*2))
+    columns_number = number_of_bytes/4;
+  else
+    columns_number = COLUMN_SIZE;
+  rows_number = number_of_bytes / columns_number;
+  extra_data = number_of_bytes % columns_number;
 
-  #ifdef DEBUG
+  /*#ifdef DEBUG
     printf("%d: Estoy en el método transpose\n", my_rank);
     printf("%d: filas=%d columnas=%d con number_of_bytes=%d\n", my_rank, rows_number, COLUMN_SIZE, number_of_bytes);
-  #endif
+  #endif*/
 
   if (wanna_encrypt) {
     #ifdef DEBUG
@@ -81,8 +91,8 @@ void transpose(unsigned char *read_buffer, unsigned char **write_buffer, int num
         printf("\nMATRIZ ORIGINAL\n");
         for (iRow =0 ; iRow < rows_number ; iRow++) {
           printf("\n");
-          for (jCol =0 ; jCol < COLUMN_SIZE ; jCol++) {
-            cont_aux = iRow * COLUMN_SIZE + jCol;
+          for (jCol =0 ; jCol < columns_number ; jCol++) {
+            cont_aux = iRow * columns_number + jCol;
             printf("%02X\t", read_buffer[cont_aux]);
           }
         }
@@ -94,10 +104,10 @@ void transpose(unsigned char *read_buffer, unsigned char **write_buffer, int num
       }
     #endif
 
-    for (jCol =0 ; jCol < COLUMN_SIZE ; jCol++) {
+    for (jCol =0 ; jCol < columns_number ; jCol++) {
       for (iRow =0 ; iRow < rows_number ; iRow++) {
         cont_aux = jCol * rows_number + iRow;
-        (*write_buffer)[cont_aux] = read_buffer[iRow * COLUMN_SIZE + jCol];
+        (*write_buffer)[cont_aux] = read_buffer[iRow * columns_number + jCol];
       }
     }
 
@@ -109,7 +119,7 @@ void transpose(unsigned char *read_buffer, unsigned char **write_buffer, int num
     #ifdef DEBUG
       if (my_rank == 0) {
         printf("\n\nMATRIZ MODIFICADA\n");
-        for (jCol =0 ; jCol < COLUMN_SIZE ; jCol++) {
+        for (jCol =0 ; jCol < columns_number ; jCol++) {
           printf("\n");
           for (iRow =0 ; iRow < rows_number ; iRow++) {
             cont_aux = jCol * rows_number + iRow;
@@ -129,7 +139,7 @@ void transpose(unsigned char *read_buffer, unsigned char **write_buffer, int num
     #ifdef DEBUG
       if (my_rank == 0) {
         printf("\nMATRIZ ORIGINAL\n");
-        for (jCol =0 ; jCol < COLUMN_SIZE ; jCol++) {
+        for (jCol =0 ; jCol < columns_number ; jCol++) {
           printf("\n");
           for (iRow =0 ; iRow < rows_number ; iRow++) {
             cont_aux = jCol * rows_number + iRow;
@@ -146,8 +156,8 @@ void transpose(unsigned char *read_buffer, unsigned char **write_buffer, int num
     #endif
 
     for (iRow =0 ; iRow < rows_number ; iRow++) {
-      for (jCol =0 ; jCol < COLUMN_SIZE ; jCol++) {
-        cont_aux = iRow * COLUMN_SIZE + jCol;
+      for (jCol =0 ; jCol < columns_number ; jCol++) {
+        cont_aux = iRow * columns_number + jCol;
         (*write_buffer)[cont_aux] = read_buffer[jCol * rows_number + iRow];
       }
     }
@@ -162,8 +172,8 @@ void transpose(unsigned char *read_buffer, unsigned char **write_buffer, int num
         printf("\n\nMATRIZ MODIFICADA\n");
         for (iRow =0 ; iRow < rows_number ; iRow++) {
           printf("\n");
-          for (jCol =0 ; jCol < COLUMN_SIZE ; jCol++) {
-            cont_aux = iRow * COLUMN_SIZE + jCol;
+          for (jCol =0 ; jCol < columns_number ; jCol++) {
+            cont_aux = iRow * columns_number + jCol;
             printf("%02X\t", (*write_buffer)[cont_aux]);
           }
         }
